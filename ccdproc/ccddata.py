@@ -112,11 +112,11 @@ class CCDData(NDDataArray):
     @data.setter
     def data(self, value):
         self._data = value
-        
+
     @property
     def wcs(self):
         return self._wcs
-    
+
     @wcs.setter
     def wcs(self, value):
         self._wcs = value
@@ -272,35 +272,50 @@ class CCDData(NDDataArray):
         else:
             result_uncertainty = None
 
+        new_meta = copy.deepcopy(self.meta)
+        new_wcs = copy.deepcopy(self.wcs)
         result = CCDData(result_data, unit=result_unit,
                          uncertainty=result_uncertainty,
-                         meta=self.meta)
+                         meta=new_meta, wcs=new_wcs)
         return result
 
-    def multiply(self, other):
+    def multiply(self, other, compare_wcs=False):
         if isinstance(other, CCDData):
-            return super(CCDData, self).multiply(other)
+            nother = other.copy()
+            if not compare_wcs:
+                nother.wcs = self.wcs
+            return super(CCDData, self).multiply(nother)
 
         return self._ccddata_arithmetic(other, np.multiply,
                                         scale_uncertainty=True)
 
-    def divide(self, other):
+    def divide(self, other, compare_wcs=False):
         if isinstance(other, CCDData):
-            return super(CCDData, self).divide(other)
+            nother = other.copy()
+            nother.wcs = self.wcs
+            if not compare_wcs:
+                nother.wcs = self.wcs
+            return super(CCDData, self).divide(nother)
 
         return self._ccddata_arithmetic(other, np.divide,
                                         scale_uncertainty=True)
 
-    def add(self, other):
+    def add(self, other, compare_wcs=False):
         if isinstance(other, CCDData):
-            return super(CCDData, self).add(other)
+            nother = other.copy()
+            if not compare_wcs:
+                nother.wcs = self.wcs
+            return super(CCDData, self).add(nother)
 
         return self._ccddata_arithmetic(other, np.add,
                                         scale_uncertainty=False)
 
-    def subtract(self, other):
+    def subtract(self, other, compare_wcs=False):
         if isinstance(other, CCDData):
-            return super(CCDData, self).subtract(other)
+            nother = other.copy()
+            if not compare_wcs:
+                nother.wcs = self.wcs
+            return super(CCDData, self).subtract(nother)
 
         return self._ccddata_arithmetic(other, np.subtract,
                                         scale_uncertainty=False)
@@ -360,7 +375,7 @@ def fits_ccddata_reader(filename, hdu=0, unit=None, **kwd):
     hdu : int, optional
         FITS extension from which CCDData should be initialized.  If zero and
         and no data in the primary extention, it will search for the first
-        extension with data.
+        extension with data.  The header will be added to the primary header.
 
     unit : astropy.units.Unit, optional
         Units of the image data. If this argument is provided and there is a
@@ -395,7 +410,8 @@ def fits_ccddata_reader(filename, hdu=0, unit=None, **kwd):
         for i in range(len(hdus)):
             if hdus.fileinfo(i)['datSpan'] > 0:
                 hdu = i
-                log.info("First HDU with data is exention {0}".format(hdu))
+                hdr = hdr + hdus[hdu].header
+                log.info("First HDU with data is exention {0}.".format(hdu))
                 break
 
     try:
@@ -419,7 +435,7 @@ def fits_ccddata_reader(filename, hdu=0, unit=None, **kwd):
     # Test for success by checking to see if the wcs ctype has a non-empty
     # value.
     wcs = wcs if wcs.wcs.ctype[0] else None
-    ccd_data = CCDData(hdus[hdu].data, meta=hdus[hdu].header, unit=use_unit,
+    ccd_data = CCDData(hdus[hdu].data, meta=hdr, unit=use_unit,
                        wcs=wcs)
     hdus.close()
     return ccd_data

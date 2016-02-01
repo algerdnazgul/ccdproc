@@ -5,8 +5,20 @@
 New Features
 ^^^^^^^^^^^^
 
+- Add a new keyword to ImageFileCollection.files_filtered to return the full
+  path to a file [#275]
+
 Other Changes and Additions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- The overscan_axis argument in subtract_overscan can now be set to
+  None, to let subtract_overscan provide a best guess for the axis. [#263]
+- Add support for wildcard and reversed FITS style slicing. [#265]
+- When reading a FITS file with CCDData.read, if no data exists in the 
+  primary hdu, the resultant header object is a combination of the 
+  header information in the primary hdu and the first hdu with data. [#271]
+- Changed cosmicray_lacosmic to use astroscrappy for cleaning. [#272]
+- CCDData arithmetic with number/Quantity now preserves any existing WCS. [#278]
 
 Bug Fixes
 ^^^^^^^^^
@@ -16,6 +28,8 @@ Bug Fixes
 
 New Features
 ^^^^^^^^^^^^
+
+- add a ``sort`` method to ImageFileCollection [#274]
 
 Other Changes and Additions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^

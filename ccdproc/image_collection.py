@@ -106,9 +106,22 @@ class ImageFileCollection(object):
         collection.
 
         Each keyword is a column heading. In addition, there is a column
-        called 'file' that contains the name of the FITS file. The directory
+        called ``file`` that contains the name of the FITS file. The directory
         is not included as part of that name.
-        """
+
+        The first column is always named ``file``.
+
+        The order of the remaining columns depends on how the summary was
+        constructed.
+
+        If a wildcard, ``*`` was used then the order is the order in which
+        the keywords appear in the FITS files from which the summary is
+        constructed.
+
+        If an explicit list of keywords was supplied in setting up the
+        collection then the order of the columns is the order of the
+        keywords.
+        """,
         return self._summary_info
 
     @property
@@ -160,6 +173,7 @@ class ImageFileCollection(object):
 
         # remove duplicates and force a copy
         new_keys = list(set(keywords))
+
         logging.debug('keywords after pruning %s', new_keys)
 
         full_new_keys = list(set(new_keys))
@@ -178,6 +192,8 @@ class ImageFileCollection(object):
                           ' '.join(self.keywords))
         else:
             logging.debug('should be building new table...')
+            # Reorder the keywords to match the initial ordering.
+            new_keys.sort(key=keywords.index)
             self._summary_info = self._fits_summary(header_keywords=new_keys)
 
     @property
@@ -218,6 +234,9 @@ class ImageFileCollection(object):
 
         ``**kwd`` is list of keywords and values the files must have.
 
+        If the keyword ``include_path=True`` is set, the returned list
+        contains not just the filename, but the full path to each file.
+
         The value '*' represents any value.
          A missing keyword is indicated by value ''
 
@@ -231,9 +250,14 @@ class ImageFileCollection(object):
         """
         # force a copy by explicitly converting to a list
         current_file_mask = list(self.summary_info['file'].mask)
+
+        include_path = kwd.pop('include_path', False)
+
         self._find_keywords_by_values(**kwd)
         filtered_files = self.summary_info['file'].compressed()
         self.summary_info['file'].mask = current_file_mask
+        if include_path:
+            filtered_files = [self._location + f for f in filtered_files]
         return filtered_files
 
     def refresh(self):
@@ -245,11 +269,28 @@ class ImageFileCollection(object):
         self._files = self._fits_files_in_directory()
         self._summary_info = self._fits_summary(header_keywords=keywords)
 
+    def sort(self, keys=None):
+        """Sort the list of files to determine the order of iteration.
+
+        Sort the table of files according to one or more keys. This does not
+        create a new object, instead is sorts in place.
+
+        Parameters
+        ----------
+        keys : str or list of str
+            The key(s) to order the table by.
+        """
+        if len(self._summary_info) > 0:
+            self._summary_info.sort(keys)
+            self._files = list(self.summary_info['file'])
+
     def _dict_from_fits_header(self, file_name, input_summary=None,
                                missing_marker=None):
         """
-        Construct a dictionary whose keys are the header keywords and values
-        are a list of the values from this file and the input dictionary.
+        Construct an ordered dictionary whose keys are the header keywords
+        and values are a list of the values from this file and the input
+        dictionary. If the input dictionary is ordered then that order is
+        preserved.
 
         Parameters
         ----------
@@ -355,8 +396,12 @@ class ImageFileCollection(object):
         if not self.files:
             return None
 
+        # Make sure we have a list...for example, in python 3, dict.keys()
+        # is not a list.
+        original_keywords = list(header_keywords)
+
         # Get rid of any duplicate keywords, also forces a copy.
-        header_keys = set(header_keywords)
+        header_keys = set(original_keywords)
         header_keys.add('file')
 
         file_name_column = MaskedColumn(name='file', data=self.files)
@@ -372,6 +417,8 @@ class ImageFileCollection(object):
         for file_name in file_name_column:
             file_path = path.join(self.location, file_name)
             try:
+                # Note: summary_dict is an OrderedDict, so should preserve
+                # the order of the keywords in the FITS header.
                 summary_dict = self._dict_from_fits_header(
                     file_path, input_summary=summary_dict,
                     missing_marker=missing_marker)
@@ -398,7 +445,12 @@ class ImageFileCollection(object):
             summary_table.add_column(all_masked)
 
         if '*' not in header_keys:
-            summary_table.keep_columns(header_keys)
+            # Rearrange table columns to match order of keywords.
+            # File always comes first.
+            header_keys -= set(['file'])
+            original_order = ['file'] + sorted(header_keys,
+                                               key=original_keywords.index)
+            summary_table = summary_table[original_order]
 
         if not summary_table.masked:
             summary_table = Table(summary_table, masked=True)
@@ -503,6 +555,7 @@ class ImageFileCollection(object):
         for extension in full_extensions:
             files.extend(fnmatch.filter(all_files, '*' + extension))
 
+        files.sort()
         return files
 
     def _generator(self, return_type,
